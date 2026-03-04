@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import "./App.css";
 
 // Hooks
 import { useSerialScale } from "./hooks/useSerialScale";
 import { useWebsocketScale } from "./hooks/useWebsocketScale";
 import { useScaleData } from "./hooks/useScaleData";
-import { useWeightLogs } from "./hooks/useWeightLogs";
 import { usePrinter } from "./hooks/usePrinter";
 
 // Components
@@ -15,38 +14,60 @@ import WeightForm from "./components/WeightForm";
 import WeightHistory from "./components/WeightHistory";
 
 // Utils
-import { isElectron, isPWA, getPlatform } from "./utils/platform";
+import { getPlatform } from "./utils/platform";
 
 function App() {
   const { weight, unit, handleData } = useScaleData();
   
-  // Ambil IP dari .env atau default ke IP server Anda
-  // PENTING: Untuk PWA, jangan gunakan localhost, gunakan IP Laptop Anda
+  // State Konfigurasi & Form
   const [deviceIp, setDeviceIp] = useState("192.168.1.100");
-  const [printerIp, setPrinterIp] = useState("192.168.1.101"); 
+  const [printerIp, setPrinterIp] = useState("192.168.1.101");
   const [productName, setProductName] = useState("");
   const [clientName, setClientName] = useState("");
   const [baudRate, setBaudRate] = useState(9600);
   const [manualPort, setManualPort] = useState("");
 
-  const { logs, saveWeight, fetchLogs } = useWeightLogs();
+  // State Database Lokal (SQLite WASM)
+  const [logs, setLogs] = useState([]);
+  const [dbWorker, setDbWorker] = useState(null);
+
   const { printerStatus, connectPrinter, disconnectPrinter, printReceipt, isPrinting } = usePrinter();
 
-  // Hook Serial: Sekarang mendukung Web Serial (PWA) & SerialPort (Electron)
+  // Hook Koneksi
   const { connectSerial, status: serialStatus, disconnectSerial } = useSerialScale(handleData);
-  
-  // Hook WebSocket: Untuk timbangan berbasis WiFi
   const { connectWS, disconnectWS, status: wsStatus } = useWebsocketScale(handleData);
 
-  // Tentukan status koneksi & warna UI
   const isOnline = wsStatus === "Connected (WS)" || serialStatus.includes("Connected");
   const curStatus = serialStatus !== "Disconnected" ? serialStatus : wsStatus;
 
+  // --- Inisialisasi SQLite WASM Worker ---
+  useEffect(() => {
+    // Memanggil worker yang mengelola SQLite di OPFS
+    const worker = new Worker(new URL('./dbWorker.js', import.meta.url));
+    
+    worker.onmessage = (e) => {
+      if (e.data.type === 'LOGS_DATA') {
+        setLogs(e.data.data); // Update tabel riwayat dengan data dari SQLite lokal
+      }
+      if (e.data.type === 'SUCCESS_INSERT') {
+        // Refresh data setelah berhasil menyimpan
+        worker.postMessage({ type: 'GET_LOGS' });
+      }
+    };
+
+    setDbWorker(worker);
+    worker.postMessage({ type: 'GET_LOGS' }); // Ambil data awal saat aplikasi dimuat
+
+    console.log(`Running on: ${getPlatform()}`);
+
+    return () => worker.terminate();
+  }, []);
+
   const handleConnectSerial = () => {
-    // Web Serial API (PWA) tidak butuh path port, akan muncul picker otomatis
-    connectSerial(Number(baudRate)); 
+    connectSerial(Number(baudRate));
   };
 
+  // --- Fungsi Simpan ke SQLite Lokal ---
   const handleSave = async (shouldPrint = false) => {
     const numericWeight = parseFloat(weight.toString().replace(/[^\d.-]/g, ''));
     
@@ -55,45 +76,43 @@ function App() {
       return;
     }
 
-    // 1. Simpan ke Database
-    const success = await saveWeight({
-      product: productName,
-      client: clientName || "-",
-      weight: numericWeight, 
-      unit: unit || "kg",
-    });
-
-    // 2. Jika Berhasil & User pilih Cetak
-    if (success && shouldPrint) {
-      await printReceipt({
-        title: "TCONNECT RECEIPT",
-        details: [
-          `Tanggal: ${new Date().toLocaleString()}`,
-          `Barang : ${productName}`,
-          `Client : ${clientName || "-"}`,
-          `Berat  : ${numericWeight} ${unit}`,
-        ],
-        footer: "Terima Kasih"
+    if (dbWorker) {
+      // Mengirim data ke worker untuk disimpan ke file .db di browser
+      dbWorker.postMessage({
+        type: 'INSERT_LOG',
+        data: {
+          product: productName,
+          client: clientName || "-",
+          weight: numericWeight, 
+          unit: unit || "kg",
+        }
       });
-    }
 
-    if (success) {
+      // Logika Cetak Struk
+      if (shouldPrint) {
+        await printReceipt({
+          title: "TCONNECT RECEIPT",
+          details: [
+            `Tanggal: ${new Date().toLocaleString()}`,
+            `Barang : ${productName}`,
+            `Client : ${clientName || "-"}`,
+            `Berat  : ${numericWeight} ${unit}`,
+          ],
+          footer: "Simpanan Lokal (Privat)"
+        });
+      }
+
+      // Reset form setelah berhasil
       setProductName("");
       setClientName("");
-      await fetchLogs();
+    } else {
+      alert("Database belum siap!");
     }
   };
-
-  // Auto-fetch data saat aplikasi pertama kali dibuka
-  useEffect(() => {
-    fetchLogs();
-    console.log(`Running on: ${getPlatform()}`);
-  }, [fetchLogs]);
 
   return (
     <div className="container py-3" style={{ maxWidth: '600px', margin: '0 auto' }}>
       
-      {/* Tampilan Angka Timbangan */}
       <ScalesDisplay 
         weight={weight} 
         unit={unit} 
@@ -102,7 +121,6 @@ function App() {
       />
 
       <div className="mt-3">
-        {/* Panel Koneksi Hardware */}
         <ConnectionPanel
           deviceIp={deviceIp} setDeviceIp={setDeviceIp}
           printerIp={printerIp} setPrinterIp={setPrinterIp}
@@ -119,7 +137,6 @@ function App() {
           printerStatus={printerStatus}
         />
         
-        {/* Form Input Barang */}
         <WeightForm 
           productName={productName} setProductName={setProductName}
           clientName={clientName} setClientName={setClientName}
@@ -129,12 +146,11 @@ function App() {
         />
       </div>
 
-      {/* Tabel Riwayat */}
+      {/* Tabel Riwayat dari state logs lokal */}
       <WeightHistory logs={logs} />
 
-      {/* Info Platform untuk Debug */}
       <div className="text-center mt-4 opacity-50" style={{ fontSize: '10px' }}>
-        Platform: {getPlatform().toUpperCase()} | v4.0 PWA-Ready
+        Platform: {getPlatform().toUpperCase()} | v5.0 SQLite-WASM OPFS Mode
       </div>
     </div>
   );
