@@ -5,8 +5,8 @@ const start = async () => {
     const sqlite3 = await sqlite3InitModule({
       print: console.log,
       printErr: console.error,
-      // FIX: Paksa pencarian file .wasm ke CDN agar tidak salah baca file HTML
       locateFile: (file) => {
+        // Paksa ke CDN jika file lokal 404
         return `https://cdn.jsdelivr.net/npm/@sqlite.org/sqlite-wasm@3.44.2/sqlite-wasm/jswasm/${file}`;
       }
     });
@@ -25,8 +25,12 @@ const start = async () => {
         );
       `);
 
+      // KRUSIAL: Kirim sinyal siap ke App.jsx
+      postMessage({ type: 'DB_READY' });
+
       onmessage = function (e) {
         const { type, data } = e.data;
+        
         if (type === 'INSERT_LOG') {
           db.exec({
             sql: `INSERT INTO timbangan_logs (product_name, client_name, gross_weight, unit_used) 
@@ -35,6 +39,7 @@ const start = async () => {
           });
           postMessage({ type: 'SUCCESS_INSERT' });
         }
+
         if (type === 'GET_LOGS') {
           const rows = [];
           db.exec({
@@ -45,10 +50,9 @@ const start = async () => {
           postMessage({ type: 'LOGS_DATA', data: rows });
         }
       };
-      console.log("✅ SQLite WASM Worker Berhasil Inisialisasi!");
     }
   } catch (err) {
-    console.error("❌ SQLite Worker Error:", err);
+    console.error("SQLite Worker Error:", err);
   }
 };
 
