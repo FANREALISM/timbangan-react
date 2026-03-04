@@ -9,7 +9,7 @@ import { useWeightLogs } from "./hooks/useWeightLogs";
 import { usePrinter } from "./hooks/usePrinter";
 
 // Components
-import ScalesDisplay from "./components/ScalesDisplay";
+import ScalesDisplay from "./components/scalesDisplay";
 import ConnectionPanel from "./components/ConnectionPanel";
 import WeightForm from "./components/WeightForm";
 import WeightHistory from "./components/WeightHistory";
