@@ -45,7 +45,11 @@ export default defineConfig({
     }),
   ],
   worker:{
-    format:'es'
+    format:'es',
+    plugins:[],
+  },
+  build: {
+    target:'esnext',
   },
   base: "./",
 });

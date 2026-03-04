@@ -43,7 +43,7 @@ function App() {
   // --- Inisialisasi SQLite WASM Worker ---
   useEffect(() => {
     // Memanggil worker yang mengelola SQLite di OPFS
-    const worker = new Worker(new URL('./dbWorker.js', import.meta.url));
+    const worker = new Worker(new URL('/dbWorker.js', import.meta.url), { type: 'module' });
     
     worker.onmessage = (e) => {
       if (e.data.type === 'LOGS_DATA') {
