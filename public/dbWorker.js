@@ -1,4 +1,4 @@
-// SQLite Worker - Static version in public/
+// SQLite Worker - Static version in public/ with Persistence Optimization
 const init = async () => {
   try {
     console.log("Worker: Starting initialization...");
@@ -21,8 +21,16 @@ const init = async () => {
     console.log("Worker: Checking OPFS availability...");
     if ("opfs" in sqlite3) {
       try {
-        db = new sqlite3.oo1.OpfsDb("/timbangan_v5.db");
-        console.log("Worker: Persistent Database (OPFS) initialized.");
+        // Menggunakan OpfsDb memastikan data tersimpan di Origin Private File System
+        db = new sqlite3.oo1.OpfsDb("/timbangan_v6.db");
+
+        // Optimasi untuk persistensi dan performa pada OPFS
+        db.exec("PRAGMA journal_mode=WAL;");
+        db.exec("PRAGMA synchronous=NORMAL;");
+
+        console.log(
+          "Worker: Persistent Database (OPFS) initialized with WAL mode.",
+        );
       } catch (err) {
         console.error(
           "Worker: Failed to open OPFS DB, falling back to memory:",
@@ -69,6 +77,11 @@ const init = async () => {
             sql: `INSERT INTO timbangan_logs (product_name, client_name, gross_weight, unit_used) VALUES (?, ?, ?, ?)`,
             bind: [data.product, data.client, data.weight, data.unit],
           });
+
+          // Memastikan data ter-flush ke storage setelah insert
+          // SQLite OPFS biasanya otomatis, tapi checkpoint membantu konsistensi WAL
+          db.exec("PRAGMA wal_checkpoint(PASSIVE);");
+
           postMessage({ type: "SUCCESS_INSERT" });
         } catch (err) {
           postMessage({ type: "ERROR", data: "Insert Failed: " + err.message });
