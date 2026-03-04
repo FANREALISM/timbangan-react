@@ -56,10 +56,18 @@ function App() {
         case "DB_READY":
           setDbReady(true);
           setDbError(null);
-          if (data && data.isFallback) {
+          // Update: method bisa berupa 'OPFS' atau 'INDEXEDDB'
+          const method = data?.method || 'MEMORY';
+          console.log("Worker: Database Ready via " + method, data);
+          
+          if (method === 'INDEXEDDB') {
+            setDbWarning("Menggunakan IndexedDB (Data persisten).");
+          } else if (method === 'MEMORY') {
             setDbWarning("Penyimpanan lokal tidak tersedia. Data akan hilang jika refresh.");
+          } else {
+            setDbWarning(null); // OPFS is perfect
           }
-          console.log("Worker: Database Ready", data);
+          
           worker.postMessage({ type: "GET_LOGS" });
           break;
         case "LOGS_DATA":
@@ -190,8 +198,8 @@ function App() {
           <span className="text-danger">ERROR: {dbError}</span>
         ) : dbReady ? (
           <>
-            <span className="text-success">READY {dbWarning ? "(MEMORY)" : "(OPFS)"}</span>
-            {dbWarning && <div className="text-warning mt-1">{dbWarning}</div>}
+            <span className="text-success">READY</span>
+            {dbWarning && <div className="text-info mt-1" style={{ fontSize: '9px' }}>{dbWarning}</div>}
           </>
         ) : (
           "INITIALIZING..."

@@ -1,53 +1,50 @@
-// SQLite Worker - Static version in public/ with Universal Persistence Fallback
-// This version uses IndexedDB to store the DB file if OPFS is not available.
+// SQLite Worker - Robust Universal Persistence Version
+// Uses IndexedDB as a reliable fallback for OPFS.
 
-const DB_NAME = "sqlite_storage";
-const STORE_NAME = "db_data";
-const DB_FILE_KEY = "timbangan_v7.db";
+const DB_FILE_NAME = "timbangan_v8.db";
+const IDB_NAME = "sqlite_storage";
+const IDB_STORE = "files";
 
-// Helper to open IndexedDB
-const openIDB = () => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore(STORE_NAME);
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-};
-
-// Helper to load DB from IDB
-const loadFromIDB = async () => {
-  const db = await openIDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readonly");
-    const request = transaction.objectStore(STORE_NAME).get(DB_FILE_KEY);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-};
-
-// Helper to save DB to IDB
-const saveToIDB = async (data) => {
-  const db = await openIDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const request = transaction.objectStore(STORE_NAME).put(data, DB_FILE_KEY);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+// Robust IndexedDB helpers
+const idb = {
+  db: null,
+  async open() {
+    if (this.db) return this.db;
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+      req.onsuccess = () => {
+        this.db = req.result;
+        resolve(this.db);
+      };
+      req.onerror = () => reject(req.error);
+    });
+  },
+  async get(key) {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, "readonly");
+      const req = tx.objectStore(IDB_STORE).get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  },
+  async set(key, val) {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, "readwrite");
+      const req = tx.objectStore(IDB_STORE).put(val, key);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  },
 };
 
 const init = async () => {
   try {
-    console.log("Worker: Starting initialization...");
-
-    // Import from local public directory
+    console.log("Worker: Initializing SQLite...");
     const { default: sqlite3InitModule } =
       await import("/sqlite-wasm/index.mjs");
-
-    console.log("Worker: SQLite module loaded, initializing...");
     const sqlite3 = await sqlite3InitModule({
       print: console.log,
       printErr: console.error,
@@ -55,80 +52,47 @@ const init = async () => {
     });
 
     let db;
-    let isOpfs = false;
+    let storageMethod = "MEMORY";
 
-    console.log("Worker: Checking OPFS availability...");
+    // 1. Try OPFS
+    console.log("Worker: Testing OPFS...");
     if ("opfs" in sqlite3) {
       try {
-        db = new sqlite3.oo1.OpfsDb("/" + DB_FILE_KEY);
-        db.exec("PRAGMA journal_mode=WAL;");
-        db.exec("PRAGMA synchronous=NORMAL;");
-        isOpfs = true;
-        console.log("Worker: Persistent Database (OPFS) initialized.");
-      } catch (err) {
-        console.warn(
-          "Worker: Failed to open OPFS DB, falling back to IndexedSync:",
-          err,
-        );
+        db = new sqlite3.oo1.OpfsDb("/" + DB_FILE_NAME);
+        storageMethod = "OPFS";
+        console.log("Worker: OPFS Storage used.");
+      } catch (e) {
+        console.warn("Worker: OPFS not usable, trying IndexedDB fallback.");
       }
     }
 
-    if (!isOpfs) {
-      console.log("Worker: Loading database from IndexedDB...");
-      const savedData = await loadFromIDB();
-
-      if (savedData) {
+    // 2. Fallback to Memory + IndexedDB sync
+    if (!db) {
+      console.log("Worker: Loading from IndexedDB...");
+      const bytes = await idb.get(DB_FILE_NAME);
+      if (bytes) {
         console.log(
-          "Worker: Restoring data from IndexedDB (" +
-            savedData.byteLength +
-            " bytes)",
+          `Worker: Restoring ${bytes.byteLength} bytes from IndexedDB`,
         );
-        const p = sqlite3.wasm.allocFromTypedArray(savedData);
         db = new sqlite3.oo1.DB();
         const rc = sqlite3.capi.sqlite3_deserialize(
           db.pointer,
           "main",
-          p,
-          savedData.byteLength,
-          savedData.byteLength,
-          sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE,
+          sqlite3.wasm.allocFromTypedArray(bytes),
+          bytes.byteLength,
+          bytes.byteLength,
+          sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE |
+            sqlite3.capi.SQLITE_DESERIALIZE_RESIZEABLE,
         );
-        sqlite3.wasm.dealloc(p); // Clean up temp buffer
+        console.log("Worker: Database restored from IndexedDB.");
       } else {
-        console.log(
-          "Worker: No saved data in IndexedDB, creating new memory database.",
-        );
+        console.log("Worker: No existing data, creating new memory database.");
         db = new sqlite3.oo1.DB();
       }
-      console.log("Worker: Hybrid Database (Memory -> IndexedDB) initialized.");
+      storageMethod = "INDEXEDDB";
     }
 
-    // Helper to trigger save if using IDB
-    const triggerSync = async () => {
-      if (!isOpfs) {
-        try {
-          // Export memory DB to buffer
-          const buffer = sqlite3.capi.sqlite3_serialize(
-            db.pointer,
-            "main",
-            0,
-            0,
-          );
-          const data = sqlite3.wasm.heapForSize(buffer).slice(0, 0); // Placeholder logic
-
-          // Actually, sqlite-wasm has a better way for built-in serialize
-          const byteArray = sqlite3.wasm.serialize(db);
-          await saveToIDB(byteArray);
-          console.log("Worker: Data synced to IndexedDB");
-        } catch (err) {
-          console.error("Worker: Failed to sync to IndexedDB:", err);
-        }
-      } else {
-        db.exec("PRAGMA wal_checkpoint(PASSIVE);");
-      }
-    };
-
-    // Buat tabel jika belum ada
+    // DB Setup
     db.exec(`
       CREATE TABLE IF NOT EXISTS timbangan_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -140,48 +104,53 @@ const init = async () => {
       );
     `);
 
-    // First sync after init just in case
-    await triggerSync();
+    const syncToStorage = async () => {
+      if (storageMethod === "INDEXEDDB") {
+        try {
+          const bytes = sqlite3.wasm.exportArray(db, { save: false });
+          await idb.set(DB_FILE_NAME, bytes);
+          console.log(`Worker: Synced ${bytes.byteLength} bytes to IndexedDB.`);
+        } catch (e) {
+          console.error("Worker: Sync failed", e);
+        }
+      }
+    };
+
+    // Initial sync
+    await syncToStorage();
 
     postMessage({
       type: "DB_READY",
-      data: { isFallback: !isOpfs },
+      data: { method: storageMethod },
     });
 
-    onmessage = function (e) {
-      const { type, data } = e.data;
-      if (type === "INSERT_LOG") {
-        try {
+    onmessage = async ({ data: { type, data } }) => {
+      try {
+        if (type === "INSERT_LOG") {
           db.exec({
-            sql: `INSERT INTO timbangan_logs (product_name, client_name, gross_weight, unit_used) VALUES (?, ?, ?, ?)`,
+            sql: "INSERT INTO timbangan_logs (product_name, client_name, gross_weight, unit_used) VALUES (?, ?, ?, ?)",
             bind: [data.product, data.client, data.weight, data.unit],
           });
-
-          triggerSync(); // Save after write
+          await syncToStorage();
           postMessage({ type: "SUCCESS_INSERT" });
-        } catch (err) {
-          postMessage({ type: "ERROR", data: "Insert Failed: " + err.message });
-        }
-      }
-      if (type === "GET_LOGS") {
-        try {
+        } else if (type === "GET_LOGS") {
           const rows = [];
           db.exec({
             sql: "SELECT * FROM timbangan_logs ORDER BY id DESC LIMIT 50",
             rowMode: "object",
-            callback: (row) => rows.push(row),
+            callback: (r) => rows.push(r),
           });
           postMessage({ type: "LOGS_DATA", data: rows });
-        } catch (err) {
-          postMessage({ type: "ERROR", data: "Query Failed: " + err.message });
         }
+      } catch (e) {
+        postMessage({ type: "ERROR", data: e.message });
       }
     };
   } catch (err) {
-    console.error("SQLite Worker Critical Error:", err);
+    console.error("Worker FATAL:", err);
     postMessage({
       type: "ERROR",
-      data: "Gagal memuat database: " + err.message,
+      data: "Initialization failed: " + err.message,
     });
   }
 };
