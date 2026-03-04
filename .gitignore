@@ -1,0 +1,8 @@
+node_modules/
+.venv/
+.venv.zip
+dist/
+dist-prod/
+dist_electron/
+*.db
+*.exe
