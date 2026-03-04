@@ -19,7 +19,6 @@ import { getPlatform } from "./utils/platform";
 function App() {
   const { weight, unit, handleData } = useScaleData();
   
-  // State Form
   const [productName, setProductName] = useState("");
   const [clientName, setClientName] = useState("");
   const [deviceIp, setDeviceIp] = useState("192.168.1.100");
@@ -27,12 +26,10 @@ function App() {
   const [baudRate, setBaudRate] = useState(9600);
   const [manualPort, setManualPort] = useState("");
 
-  // --- STATE DATABASE LOKAL ---
   const [logs, setLogs] = useState([]);
   const [dbWorker, setDbWorker] = useState(null);
   const [dbReady, setDbReady] = useState(false);
 
-  // Hook Tambahan
   const { printerStatus, connectPrinter, disconnectPrinter, printReceipt, isPrinting } = usePrinter();
   const { connectSerial, status: serialStatus, disconnectSerial } = useSerialScale(handleData);
   const { connectWS, disconnectWS, status: wsStatus } = useWebsocketScale(handleData);
@@ -40,27 +37,23 @@ function App() {
   const isOnline = wsStatus === "Connected (WS)" || serialStatus.includes("Connected");
   const curStatus = serialStatus !== "Disconnected" ? serialStatus : wsStatus;
 
-  // --- INISIALISASI WORKER ---
   useEffect(() => {
-    // Inisialisasi Worker dari file lokal
-    const worker = new Worker(new URL('./dbWorker.js', import.meta.url), { type: 'module' });
-    
+    // Vite akan otomatis mendeteksi ini sebagai worker entry point
+    const worker = new Worker(new URL("./dbWorker.js", import.meta.url), {
+      type: "module",
+    });
+
     worker.onmessage = (e) => {
       const { type, data } = e.data;
-      
-      if (type === 'DB_READY') {
+      if (type === "DB_READY") {
         setDbReady(true);
-        console.log("✅ Database SQLite Lokal Aktif");
-        worker.postMessage({ type: 'GET_LOGS' });
+        worker.postMessage({ type: "GET_LOGS" });
       }
-      
-      if (type === 'LOGS_DATA') {
+      if (type === "LOGS_DATA") {
         setLogs(data || []);
       }
-      
-      if (type === 'SUCCESS_INSERT') {
-        // Refresh tabel setelah simpan berhasil
-        worker.postMessage({ type: 'GET_LOGS' });
+      if (type === "SUCCESS_INSERT") {
+        worker.postMessage({ type: "GET_LOGS" });
       }
     };
 
@@ -68,9 +61,8 @@ function App() {
     return () => worker.terminate();
   }, []);
 
-  // --- FUNGSI SIMPAN ---
   const handleSave = async (shouldPrint = false) => {
-    const numericWeight = parseFloat(weight.toString().replace(/[^\d.-]/g, ''));
+    const numericWeight = parseFloat(weight.toString().replace(/[^\d.-]/g, ""));
     
     if (!productName || isNaN(numericWeight)) {
       alert("Nama produk atau berat tidak boleh kosong!");
@@ -79,13 +71,13 @@ function App() {
 
     if (dbWorker && dbReady) {
       dbWorker.postMessage({
-        type: 'INSERT_LOG',
+        type: "INSERT_LOG",
         data: {
           product: productName,
           client: clientName || "-",
-          weight: numericWeight, 
+          weight: numericWeight,
           unit: unit || "kg",
-        }
+        },
       });
 
       if (shouldPrint) {
@@ -97,26 +89,20 @@ function App() {
             `Client : ${clientName || "-"}`,
             `Berat  : ${numericWeight} ${unit}`,
           ],
-          footer: "Simpanan Lokal"
+          footer: "Simpanan Lokal",
         });
       }
 
-      // Reset Form
       setProductName("");
       setClientName("");
     } else {
-      alert("Database belum siap! Mohon tunggu beberapa detik.");
+      alert("Database belum siap!");
     }
   };
 
   return (
-    <div className="container py-3" style={{ maxWidth: '600px', margin: '0 auto' }}>
-      <ScalesDisplay 
-        weight={weight} 
-        unit={unit} 
-        status={curStatus} 
-        isConnected={isOnline} 
-      />
+    <div className="container py-3" style={{ maxWidth: "600px", margin: "0 auto" }}>
+      <ScalesDisplay weight={weight} unit={unit} status={curStatus} isConnected={isOnline} />
 
       <div className="mt-3">
         <ConnectionPanel
@@ -124,31 +110,24 @@ function App() {
           printerIp={printerIp} setPrinterIp={setPrinterIp}
           scaleBaudRate={baudRate} setScaleBaudRate={setBaudRate}
           manualPort={manualPort} setManualPort={setManualPort}
-          connectSerial={() => connectSerial(Number(baudRate))} 
+          connectSerial={() => connectSerial(Number(baudRate))}
           connectWS={() => connectWS(deviceIp)}
-          disconnectWS={() => {
-            disconnectWS();
-            disconnectSerial();
-          }}
+          disconnectWS={() => { disconnectWS(); disconnectSerial(); }}
           connectPrinter={connectPrinter}
           disconnectPrinter={disconnectPrinter}
           printerStatus={printerStatus}
         />
-        
         <WeightForm 
           productName={productName} setProductName={setProductName}
           clientName={clientName} setClientName={setClientName}
-          handleSave={handleSave} 
-          isOnline={isOnline}
-          isPrinting={isPrinting}
+          handleSave={handleSave} isOnline={isOnline} isPrinting={isPrinting}
         />
       </div>
 
-      {/* Tabel Riwayat */}
       <WeightHistory logs={logs} />
 
-      <div className="text-center mt-4 opacity-50" style={{ fontSize: '10px' }}>
-        Platform: {getPlatform().toUpperCase()} | v5.0 SQLite-WASM OPFS | DB Status: {dbReady ? "READY" : "INITIALIZING..."}
+      <div className="text-center mt-4 opacity-50" style={{ fontSize: "10px" }}>
+        Platform: {getPlatform().toUpperCase()} | DB: {dbReady ? "READY" : "INIT..."}
       </div>
     </div>
   );

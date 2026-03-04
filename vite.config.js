@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      injectRegister: 'auto', // Tambahkan ini agar PWA terdaftar otomatis
+      injectRegister: 'auto',
       includeAssets: ["favicon.ico", "apple-touch-icon.png", "mask-icon.svg"],
       manifest: {
         name: "Tconnect Scale System",
@@ -31,27 +31,35 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Gabungkan wasm agar bisa jalan saat offline
+        // Gabungkan assets agar bisa jalan saat offline
         globPatterns: ["**/*.{js,css,html,ico,png,svg,wasm}"],
-        // Hapus runtimeCaching /api jika Anda sudah full menggunakan SQLite WASM lokal
-        // Karena kita tidak lagi memanggil API server
+        // Hindari konflik caching pada file worker yang diproses Vite
+        navigateFallback: "index.html",
+        donotCacheBustURLsMatching: new RegExp('^[a-f0-9]{8}$'),
       },
     }),
   ],
   server: {
-    // Header ini WAJIB untuk SQLite WASM / OPFS
     headers: {
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "require-corp",
     },
   },
   worker: {
+    // Pastikan format worker adalah ES module
     format: 'es',
   },
   build: {
-    target: 'esnext', // Mendukung fitur modern OPFS
+    target: 'esnext', // Penting untuk mendukung fitur BigInt/OPFS di SQLite
+    minify: 'esbuild',
+    rollupOptions: {
+      output: {
+        // Mengatur pola penamaan agar tidak terjadi "unknown file"
+        assetFileNames: 'assets/[name]-[hash][extname]',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
+      },
+    },
   },
-  // Saran: Gunakan "/" (absolute) bukan "./" (relative) 
-  // agar path worker dan wasm tidak berantakan
   base: "/", 
 });
