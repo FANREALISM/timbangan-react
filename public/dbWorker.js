@@ -1,30 +1,26 @@
-// Import from CDN using absolute URL
-// We use a try-catch even for the import to catch network or compatibility errors
+// SQLite Worker - Static version in public/
 const init = async () => {
   try {
     console.log("Worker: Starting initialization...");
 
-    // Gunakan versi 3.45.0 yang memiliki struktur dist/ yang rapi di jsdelivr
-    const CDN_BASE =
-      "https://cdn.jsdelivr.net/npm/@sqlite.org/sqlite-wasm@3.45.0/dist/";
-
-    const { default: sqlite3InitModule } = await import(
-      `${CDN_BASE}sqlite3.mjs`
-    );
+    // Import from local public directory
+    const { default: sqlite3InitModule } =
+      await import("/sqlite-wasm/index.mjs");
 
     console.log("Worker: SQLite module loaded, initializing...");
     const sqlite3 = await sqlite3InitModule({
       print: console.log,
       printErr: console.error,
-      locateFile: (file) => `${CDN_BASE}${file}`,
+      // Point to local WASM file
+      locateFile: (file) => `/sqlite-wasm/${file}`,
     });
+
     let db;
     let isFallback = false;
 
     console.log("Worker: Checking OPFS availability...");
     if ("opfs" in sqlite3) {
       try {
-        console.log("Worker: OPFS is available, opening database...");
         db = new sqlite3.oo1.OpfsDb("/timbangan_v5.db");
         console.log("Worker: Persistent Database (OPFS) initialized.");
       } catch (err) {
@@ -57,10 +53,12 @@ const init = async () => {
 
     postMessage({
       type: "DB_READY",
-      isFallback: isFallback,
-      warning: isFallback
-        ? "Penyimpanan permanen tidak didukung. Data akan hilang jika aplikasi di-refresh."
-        : null,
+      data: {
+        isFallback: isFallback,
+        warning: isFallback
+          ? "Penyimpanan permanen tidak didukung. Data akan hilang jika aplikasi di-refresh."
+          : null,
+      },
     });
 
     onmessage = function (e) {

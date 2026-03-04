@@ -46,10 +46,8 @@ function App() {
 
   // --- 5. Inisialisasi Web Worker untuk SQLite ---
   useEffect(() => {
-    // Menggunakan Vite worker import untuk reliabilitas build
-    const worker = new Worker(new URL("./dbWorker.js", import.meta.url), {
-      type: "module",
-    });
+    // Gunakan static worker di public/ untuk menghindari error build PWA pada Rollup/Vercel
+    const worker = new Worker("/dbWorker.js", { type: "module" });
 
     worker.onmessage = (e) => {
       const { type, data } = e.data;
