@@ -1,9 +1,9 @@
-// SQLite Worker - Robust Universal Persistence Version
-// Uses IndexedDB as a reliable fallback for OPFS.
+// SQLite Worker - Robust Universal Persistence Version (Fix Schema Error)
+// Uses a fresh IndexedDB name to avoid version/store name conflicts.
 
 const DB_FILE_NAME = "timbangan_v8.db";
-const IDB_NAME = "sqlite_storage";
-const IDB_STORE = "files";
+const IDB_NAME = "tconnect_sqlite_v2"; // Fresh name to avoid legacy schema issues
+const IDB_STORE = "logs";
 
 // Robust IndexedDB helpers
 const idb = {
@@ -12,7 +12,12 @@ const idb = {
     if (this.db) return this.db;
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(IDB_NAME, 1);
-      req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+      req.onupgradeneeded = (e) => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) {
+          db.createObjectStore(IDB_STORE);
+        }
+      };
       req.onsuccess = () => {
         this.db = req.result;
         resolve(this.db);
@@ -69,7 +74,13 @@ const init = async () => {
     // 2. Fallback to Memory + IndexedDB sync
     if (!db) {
       console.log("Worker: Loading from IndexedDB...");
-      const bytes = await idb.get(DB_FILE_NAME);
+      let bytes;
+      try {
+        bytes = await idb.get(DB_FILE_NAME);
+      } catch (e) {
+        console.error("Worker: IDB Load failed", e);
+      }
+
       if (bytes) {
         console.log(
           `Worker: Restoring ${bytes.byteLength} bytes from IndexedDB`,
