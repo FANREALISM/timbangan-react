@@ -3,7 +3,7 @@ const cors = require("cors");
 const ini = require("ini");
 const fs = require("fs");
 const path = require("path");
-const Database = require("./db"); // Pastikan file db.js Anda juga kompatibel
+const Database = require("./db.cjs"); // Pastikan file db.js Anda juga kompatibel
 
 const app = express();
 
