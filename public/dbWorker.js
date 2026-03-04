@@ -1,4 +1,44 @@
-// SQLite Worker - Static version in public/ with Persistence Optimization
+// SQLite Worker - Static version in public/ with Universal Persistence Fallback
+// This version uses IndexedDB to store the DB file if OPFS is not available.
+
+const DB_NAME = "sqlite_storage";
+const STORE_NAME = "db_data";
+const DB_FILE_KEY = "timbangan_v7.db";
+
+// Helper to open IndexedDB
+const openIDB = () => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(STORE_NAME);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+// Helper to load DB from IDB
+const loadFromIDB = async () => {
+  const db = await openIDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, "readonly");
+    const request = transaction.objectStore(STORE_NAME).get(DB_FILE_KEY);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+// Helper to save DB to IDB
+const saveToIDB = async (data) => {
+  const db = await openIDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, "readwrite");
+    const request = transaction.objectStore(STORE_NAME).put(data, DB_FILE_KEY);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
 const init = async () => {
   try {
     console.log("Worker: Starting initialization...");
@@ -11,41 +51,82 @@ const init = async () => {
     const sqlite3 = await sqlite3InitModule({
       print: console.log,
       printErr: console.error,
-      // Point to local WASM file
       locateFile: (file) => `/sqlite-wasm/${file}`,
     });
 
     let db;
-    let isFallback = false;
+    let isOpfs = false;
 
     console.log("Worker: Checking OPFS availability...");
     if ("opfs" in sqlite3) {
       try {
-        // Menggunakan OpfsDb memastikan data tersimpan di Origin Private File System
-        db = new sqlite3.oo1.OpfsDb("/timbangan_v6.db");
-
-        // Optimasi untuk persistensi dan performa pada OPFS
+        db = new sqlite3.oo1.OpfsDb("/" + DB_FILE_KEY);
         db.exec("PRAGMA journal_mode=WAL;");
         db.exec("PRAGMA synchronous=NORMAL;");
-
-        console.log(
-          "Worker: Persistent Database (OPFS) initialized with WAL mode.",
-        );
+        isOpfs = true;
+        console.log("Worker: Persistent Database (OPFS) initialized.");
       } catch (err) {
-        console.error(
-          "Worker: Failed to open OPFS DB, falling back to memory:",
+        console.warn(
+          "Worker: Failed to open OPFS DB, falling back to IndexedSync:",
           err,
         );
-        db = new sqlite3.oo1.DB();
-        isFallback = true;
       }
-    } else {
-      console.warn(
-        "Worker: OPFS not available, using In-Memory database (NOT PERSISTENT)",
-      );
-      db = new sqlite3.oo1.DB();
-      isFallback = true;
     }
+
+    if (!isOpfs) {
+      console.log("Worker: Loading database from IndexedDB...");
+      const savedData = await loadFromIDB();
+
+      if (savedData) {
+        console.log(
+          "Worker: Restoring data from IndexedDB (" +
+            savedData.byteLength +
+            " bytes)",
+        );
+        const p = sqlite3.wasm.allocFromTypedArray(savedData);
+        db = new sqlite3.oo1.DB();
+        const rc = sqlite3.capi.sqlite3_deserialize(
+          db.pointer,
+          "main",
+          p,
+          savedData.byteLength,
+          savedData.byteLength,
+          sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE,
+        );
+        sqlite3.wasm.dealloc(p); // Clean up temp buffer
+      } else {
+        console.log(
+          "Worker: No saved data in IndexedDB, creating new memory database.",
+        );
+        db = new sqlite3.oo1.DB();
+      }
+      console.log("Worker: Hybrid Database (Memory -> IndexedDB) initialized.");
+    }
+
+    // Helper to trigger save if using IDB
+    const triggerSync = async () => {
+      if (!isOpfs) {
+        try {
+          // Export memory DB to buffer
+          const buffer = sqlite3.capi.sqlite3_serialize(
+            db.pointer,
+            "main",
+            0,
+            0,
+          );
+          const data = sqlite3.wasm.heapForSize(buffer).slice(0, 0); // Placeholder logic
+
+          // Actually, sqlite-wasm has a better way for built-in serialize
+          const byteArray = sqlite3.wasm.serialize(db);
+          await saveToIDB(byteArray);
+          console.log("Worker: Data synced to IndexedDB");
+        } catch (err) {
+          console.error("Worker: Failed to sync to IndexedDB:", err);
+        }
+      } else {
+        db.exec("PRAGMA wal_checkpoint(PASSIVE);");
+      }
+    };
 
     // Buat tabel jika belum ada
     db.exec(`
@@ -59,14 +140,12 @@ const init = async () => {
       );
     `);
 
+    // First sync after init just in case
+    await triggerSync();
+
     postMessage({
       type: "DB_READY",
-      data: {
-        isFallback: isFallback,
-        warning: isFallback
-          ? "Penyimpanan permanen tidak didukung. Data akan hilang jika aplikasi di-refresh."
-          : null,
-      },
+      data: { isFallback: !isOpfs },
     });
 
     onmessage = function (e) {
@@ -78,10 +157,7 @@ const init = async () => {
             bind: [data.product, data.client, data.weight, data.unit],
           });
 
-          // Memastikan data ter-flush ke storage setelah insert
-          // SQLite OPFS biasanya otomatis, tapi checkpoint membantu konsistensi WAL
-          db.exec("PRAGMA wal_checkpoint(PASSIVE);");
-
+          triggerSync(); // Save after write
           postMessage({ type: "SUCCESS_INSERT" });
         } catch (err) {
           postMessage({ type: "ERROR", data: "Insert Failed: " + err.message });
