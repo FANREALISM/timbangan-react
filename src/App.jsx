@@ -32,6 +32,8 @@ function App() {
   const [logs, setLogs] = useState([]);
   const [dbWorker, setDbWorker] = useState(null);
   const [dbReady, setDbReady] = useState(false);
+  const [dbError, setDbError] = useState(null);
+  const [dbWarning, setDbWarning] = useState(null);
 
   // 4. Hook Koneksi Hardware
   const { printerStatus, connectPrinter, disconnectPrinter, printReceipt, isPrinting } = usePrinter();
@@ -53,7 +55,11 @@ function App() {
       switch (type) {
         case "DB_READY":
           setDbReady(true);
-          console.log("Worker: Database Ready");
+          setDbError(null);
+          if (data && data.isFallback) {
+            setDbWarning("Penyimpanan lokal tidak tersedia. Data akan hilang jika refresh.");
+          }
+          console.log("Worker: Database Ready", data);
           worker.postMessage({ type: "GET_LOGS" });
           break;
         case "LOGS_DATA":
@@ -65,6 +71,8 @@ function App() {
           break;
         case "ERROR":
           console.error("Worker Error:", data);
+          setDbError(data);
+          setDbReady(false);
           break;
         default:
           break;
@@ -176,10 +184,18 @@ function App() {
       {/* Tabel Riwayat dari SQLite */}
       <WeightHistory logs={logs} />
 
-      {/* Footer Info */}
       <div className="text-center mt-4 opacity-50" style={{ fontSize: "10px" }}>
         PLATFORM: {getPlatform().toUpperCase()} | 
-        DB STATUS: {dbReady ? "READY (OPFS)" : "INITIALIZING..."}
+        DB STATUS: {dbError ? (
+          <span className="text-danger">ERROR: {dbError}</span>
+        ) : dbReady ? (
+          <>
+            <span className="text-success">READY {dbWarning ? "(MEMORY)" : "(OPFS)"}</span>
+            {dbWarning && <div className="text-warning mt-1">{dbWarning}</div>}
+          </>
+        ) : (
+          "INITIALIZING..."
+        )}
       </div>
     </div>
   );
