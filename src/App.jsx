@@ -46,8 +46,10 @@ function App() {
 
   // --- 5. Inisialisasi Web Worker untuk SQLite ---
   useEffect(() => {
-    // Vite merekomendasikan penulisan URL seperti ini agar worker terdeteksi saat build
-    const worker = new Worker("/dbWorker.js", { type: "module" });
+    // Menggunakan Vite worker import untuk reliabilitas build
+    const worker = new Worker(new URL("./dbWorker.js", import.meta.url), {
+      type: "module",
+    });
 
     worker.onmessage = (e) => {
       const { type, data } = e.data;
