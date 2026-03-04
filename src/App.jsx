@@ -30,6 +30,7 @@ function App() {
   // State Database Lokal (SQLite WASM)
   const [logs, setLogs] = useState([]);
   const [dbWorker, setDbWorker] = useState(null);
+  const [dbReady, setDbReady] = useState(false);
 
   const { printerStatus, connectPrinter, disconnectPrinter, printReceipt, isPrinting } = usePrinter();
 
@@ -42,25 +43,46 @@ function App() {
 
   // --- Inisialisasi SQLite WASM Worker ---
   useEffect(() => {
-    // Memanggil worker yang mengelola SQLite di OPFS
-    const worker = new Worker(new URL('/dbWorker.js', import.meta.url), { type: 'module' });
+    // Gunakan URL absolut untuk menghindari error Vite dev server 404 pada .wasm
+    // Pastikan dbWorker.js ada di folder src/
+    const worker = new Worker(new URL('./dbWorker.js', import.meta.url), { 
+      type: 'module',
+      name: 'sqlite-worker'
+    });
     
     worker.onmessage = (e) => {
-      if (e.data.type === 'LOGS_DATA') {
-        setLogs(e.data.data); // Update tabel riwayat dengan data dari SQLite lokal
+      const { type, data, error } = e.data;
+
+      if (type === 'DB_READY') {
+        console.log("✅ Database SQLite WASM siap di OPFS");
+        setDbReady(true);
+        // Ambil data pertama kali setelah db siap
+        worker.postMessage({ type: 'GET_LOGS' });
       }
-      if (e.data.type === 'SUCCESS_INSERT') {
+
+      if (type === 'LOGS_DATA') {
+        console.log("📥 Menerima data logs:", data);
+        setLogs(data || []);
+      }
+
+      if (type === 'SUCCESS_INSERT') {
+        console.log("💾 Data berhasil disimpan ke SQLite");
         // Refresh data setelah berhasil menyimpan
         worker.postMessage({ type: 'GET_LOGS' });
+      }
+
+      if (error) {
+        console.error("❌ Worker Error:", error);
       }
     };
 
     setDbWorker(worker);
-    worker.postMessage({ type: 'GET_LOGS' }); // Ambil data awal saat aplikasi dimuat
 
     console.log(`Running on: ${getPlatform()}`);
 
-    return () => worker.terminate();
+    return () => {
+      worker.terminate();
+    };
   }, []);
 
   const handleConnectSerial = () => {
@@ -69,6 +91,7 @@ function App() {
 
   // --- Fungsi Simpan ke SQLite Lokal ---
   const handleSave = async (shouldPrint = false) => {
+    // Bersihkan angka dari satuan jika ada (misal "10.5 kg" -> 10.5)
     const numericWeight = parseFloat(weight.toString().replace(/[^\d.-]/g, ''));
     
     if (!productName || isNaN(numericWeight)) {
@@ -76,7 +99,7 @@ function App() {
       return;
     }
 
-    if (dbWorker) {
+    if (dbWorker && dbReady) {
       // Mengirim data ke worker untuk disimpan ke file .db di browser
       dbWorker.postMessage({
         type: 'INSERT_LOG',
@@ -90,23 +113,27 @@ function App() {
 
       // Logika Cetak Struk
       if (shouldPrint) {
-        await printReceipt({
-          title: "TCONNECT RECEIPT",
-          details: [
-            `Tanggal: ${new Date().toLocaleString()}`,
-            `Barang : ${productName}`,
-            `Client : ${clientName || "-"}`,
-            `Berat  : ${numericWeight} ${unit}`,
-          ],
-          footer: "Simpanan Lokal (Privat)"
-        });
+        try {
+          await printReceipt({
+            title: "TCONNECT RECEIPT",
+            details: [
+              `Tanggal: ${new Date().toLocaleString()}`,
+              `Barang : ${productName}`,
+              `Client : ${clientName || "-"}`,
+              `Berat  : ${numericWeight} ${unit || "kg"}`,
+            ],
+            footer: "Simpanan Lokal (Privat)"
+          });
+        } catch (err) {
+          console.error("Gagal mencetak:", err);
+        }
       }
 
-      // Reset form setelah berhasil
+      // Reset form setelah berhasil kirim perintah simpan
       setProductName("");
       setClientName("");
     } else {
-      alert("Database belum siap!");
+      alert("Database belum siap! Mohon tunggu sebentar.");
     }
   };
 
@@ -143,14 +170,19 @@ function App() {
           handleSave={handleSave} 
           isOnline={isOnline}
           isPrinting={isPrinting}
+          dbReady={dbReady}
         />
       </div>
 
+      <hr className="my-4" />
+      <h5 className="mb-3">Riwayat Timbangan (Lokal)</h5>
+      
       {/* Tabel Riwayat dari state logs lokal */}
       <WeightHistory logs={logs} />
 
       <div className="text-center mt-4 opacity-50" style={{ fontSize: '10px' }}>
-        Platform: {getPlatform().toUpperCase()} | v5.0 SQLite-WASM OPFS Mode
+        Platform: {getPlatform().toUpperCase()} | v5.0 SQLite-WASM OPFS Mode | 
+        DB Status: {dbReady ? "READY" : "INITIALIZING..."}
       </div>
     </div>
   );
