@@ -2,7 +2,18 @@ import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 
 const start = async () => {
   try {
-    const sqlite3 = await sqlite3InitModule();
+    const sqlite3 = await sqlite3InitModule({
+      print: console.log,
+      printErr: console.error,
+      // FIX: Arahkan ke CDN jika Vite gagal menyajikan file wasm lokal
+      locateFile: (file) => {
+        if (file.endsWith('.wasm')) {
+          return `https://cdn.jsdelivr.net/npm/@sqlite.org/sqlite-wasm@3.44.2/sqlite-wasm/jswasm/${file}`;
+        }
+        return file;
+      }
+    });
+
     if ('opfs' in sqlite3) {
       const db = new sqlite3.oo1.OpfsDb('/timbangan_lokal.db');
       
@@ -37,6 +48,7 @@ const start = async () => {
           postMessage({ type: 'LOGS_DATA', data: rows });
         }
       };
+      console.log("SQLite WASM Lokal Berhasil Dimuat");
     }
   } catch (err) {
     console.error("SQLite Worker Error:", err);
