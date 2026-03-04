@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      injectRegister: 'auto',
+      injectRegister: "auto",
       includeAssets: ["favicon.ico", "apple-touch-icon.png", "mask-icon.svg"],
       manifest: {
         name: "Tconnect Scale System",
@@ -18,24 +18,17 @@ export default defineConfig({
         display: "standalone",
         orientation: "portrait",
         icons: [
-          {
-            src: "pwa-192x192.png",
-            sizes: "192x192",
-            type: "image/png",
-          },
-          {
-            src: "pwa-512x512.png",
-            sizes: "512x512",
-            type: "image/png",
-          },
+          { src: "pwa-192x192.png", sizes: "192x192", type: "image/png" },
+          { src: "pwa-512x512.png", sizes: "512x512", type: "image/png" },
         ],
       },
       workbox: {
-        // Gabungkan assets agar bisa jalan saat offline
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,wasm}"],
-        // Hindari konflik caching pada file worker yang diproses Vite
+        // Exclude worker chunks and WASM files — sqlite-wasm uses dynamic import.meta.url
+        // internally which vite-plugin-pwa cannot resolve during build
+        globPatterns: ["**/*.{css,html,ico,png,svg}"],
+        globIgnores: ["**/*worker*", "**/*.wasm"],
         navigateFallback: "index.html",
-        donotCacheBustURLsMatching: new RegExp('^[a-f0-9]{8}$'),
+        dontCacheBustURLsMatching: /-[a-f0-9]{8}\./,
       },
     }),
   ],
@@ -46,20 +39,19 @@ export default defineConfig({
     },
   },
   worker: {
-    // Pastikan format worker adalah ES module
-    format: 'es',
+    format: "es", // Pastikan format worker tetap ES module
   },
   build: {
-    target: 'esnext', // Penting untuk mendukung fitur BigInt/OPFS di SQLite
-    minify: 'esbuild',
+    target: "esnext",
+    minify: "esbuild",
     rollupOptions: {
       output: {
-        // Mengatur pola penamaan agar tidak terjadi "unknown file"
-        assetFileNames: 'assets/[name]-[hash][extname]',
-        chunkFileNames: 'assets/[name]-[hash].js',
-        entryFileNames: 'assets/[name]-[hash].js',
+        // Memaksa format penamaan file yang konsisten untuk aset
+        assetFileNames: "assets/[name]-[hash][extname]",
+        chunkFileNames: "assets/[name]-[hash].js",
+        entryFileNames: "assets/[name]-[hash].js",
       },
     },
   },
-  base: "/", 
+  base: "/",
 });
