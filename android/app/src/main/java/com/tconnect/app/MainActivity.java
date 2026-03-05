@@ -8,8 +8,11 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Register Custom Plugins BEFORE super.onCreate
+        registerPlugin(com.tconnect.app.plugins.CustomHardwarePlugin.class);
+
         super.onCreate(savedInstanceState);
-        
+
         // Tambahkan blok kode ini
         WebView webView = this.getBridge().getWebView();
         WebSettings settings = webView.getSettings();

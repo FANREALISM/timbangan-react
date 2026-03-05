@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      injectRegister: "auto",
+      injectRegister: "script",
       includeAssets: ["favicon.ico", "apple-touch-icon.png", "mask-icon.svg"],
       manifest: {
         name: "Tconnect Scale System",
@@ -26,20 +26,32 @@ export default defineConfig({
         // Exclude worker chunks and WASM files — sqlite-wasm uses dynamic import.meta.url
         // internally which vite-plugin-pwa cannot resolve during build
         globPatterns: ["**/*.{css,html,ico,png,svg}"],
-        globIgnores: ["**/*worker*", "**/*.wasm"],
+        globIgnores: [
+          "**/*worker*",
+          "**/*.wasm",
+          "**/worker-*",
+          "**/assets/worker-*",
+        ],
         navigateFallback: "index.html",
         dontCacheBustURLsMatching: /-[a-f0-9]{8}\./,
       },
     }),
   ],
   server: {
+    proxy: {
+      "/api": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+      },
+    },
     headers: {
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "require-corp",
     },
   },
   worker: {
-    format: "es", // Pastikan format worker tetap ES module
+    format: "es",
+    plugins: [react()],
   },
   build: {
     target: "esnext",
