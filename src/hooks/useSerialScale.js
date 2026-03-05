@@ -1,5 +1,8 @@
 import { useState, useRef, useCallback } from "react";
 import { isCapacitor } from "../utils/platform";
+import { registerPlugin } from "@capacitor/core";
+
+const CustomHardware = registerPlugin("CustomHardware");
 
 export const useSerialScale = (onDataReceived) => {
   const [status, setStatus] = useState("Disconnected");
@@ -11,12 +14,11 @@ export const useSerialScale = (onDataReceived) => {
     if (isConnecting.current) return;
     isConnecting.current = true;
 
-    // Jika di Android/Capacitor
     if (isCapacitor()) {
       const type = options.type || "usb"; // 'usb' or 'bluetooth'
 
       if (type === "bluetooth") {
-        return handleBluetoothConnection(onDataReceived);
+        return handleBluetoothConnection(options.macAddress, onDataReceived);
       } else {
         return handleUsbConnection(baudRate, onDataReceived);
       }
@@ -26,19 +28,18 @@ export const useSerialScale = (onDataReceived) => {
     return handleWebSerialConnection(baudRate, onDataReceived);
   };
 
-  const handleBluetoothConnection = async (callback) => {
+  const handleBluetoothConnection = async (macAddress, callback) => {
     try {
       setStatus("Connecting Bluetooth...");
       isConnecting.current = true;
-
-      const { CustomHardware } = Capacitor.Plugins;
 
       // We add listener before connecting to not miss early data
       await CustomHardware.addListener("onDataReceived", (info) => {
         if (info.data) callback(info.data);
       });
 
-      const result = await CustomHardware.connectBluetooth({});
+      const params = macAddress ? { macAddress } : {};
+      const result = await CustomHardware.connectBluetooth(params);
       if (result.status === "connected") {
         setStatus("Connected (BT)");
       }
@@ -51,12 +52,21 @@ export const useSerialScale = (onDataReceived) => {
     }
   };
 
+  const getPairedDevices = async () => {
+    if (!isCapacitor()) return [];
+    try {
+      const result = await CustomHardware.getPairedDevices();
+      return result.devices || [];
+    } catch (err) {
+      console.error("Failed to get paired devices:", err);
+      return [];
+    }
+  };
+
   const handleUsbConnection = async (baudRate, callback) => {
     try {
       setStatus("Connecting USB OTG...");
       isConnecting.current = true;
-
-      const { CustomHardware } = Capacitor.Plugins;
 
       await CustomHardware.addListener("onDataReceived", (info) => {
         if (info.data) callback(info.data);
@@ -121,7 +131,6 @@ export const useSerialScale = (onDataReceived) => {
   const disconnectSerial = async () => {
     if (isCapacitor()) {
       try {
-        const { CustomHardware } = Capacitor.Plugins;
         await CustomHardware.disconnect();
         CustomHardware.removeAllListeners();
       } catch (e) {
@@ -134,5 +143,5 @@ export const useSerialScale = (onDataReceived) => {
     setStatus("Disconnected");
   };
 
-  return { connectSerial, disconnectSerial, status };
+  return { connectSerial, disconnectSerial, status, getPairedDevices };
 };

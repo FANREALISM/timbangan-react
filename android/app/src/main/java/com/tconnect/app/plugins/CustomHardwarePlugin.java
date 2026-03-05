@@ -26,6 +26,11 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import com.hoho.android.usbserial.driver.UsbSerialDriver;
 import com.hoho.android.usbserial.driver.UsbSerialPort;
 import com.hoho.android.usbserial.driver.UsbSerialProber;
+import com.hoho.android.usbserial.driver.ProbeTable;
+import com.hoho.android.usbserial.driver.Ch34xSerialDriver;
+import com.hoho.android.usbserial.driver.Cp21xxSerialDriver;
+import com.hoho.android.usbserial.driver.FtdiSerialDriver;
+import com.hoho.android.usbserial.driver.ProlificSerialDriver;
 import com.hoho.android.usbserial.util.SerialInputOutputManager;
 
 import java.io.IOException;
@@ -64,6 +69,30 @@ public class CustomHardwarePlugin extends Plugin implements SerialInputOutputMan
         super.load();
         btAdapter = BluetoothAdapter.getDefaultAdapter();
         usbManager = (UsbManager) getContext().getSystemService(Context.USB_SERVICE);
+    }
+
+    @PluginMethod
+    public void getPairedDevices(PluginCall call) {
+        if (btAdapter == null) {
+            call.reject("Bluetooth tidak didukung di perangkat ini.");
+            return;
+        }
+
+        if (ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            // we assume permissions are handled or it's < Android 12 for simplicity in this prototype.
+        }
+
+        com.getcapacitor.JSArray devicesArray = new com.getcapacitor.JSArray();
+        for (BluetoothDevice device : btAdapter.getBondedDevices()) {
+            JSObject deviceObj = new JSObject();
+            deviceObj.put("name", device.getName());
+            deviceObj.put("address", device.getAddress());
+            devicesArray.put(deviceObj);
+        }
+
+        JSObject ret = new JSObject();
+        ret.put("devices", devicesArray);
+        call.resolve(ret);
     }
 
     @PluginMethod
@@ -156,7 +185,22 @@ public class CustomHardwarePlugin extends Plugin implements SerialInputOutputMan
     public void connectUsb(PluginCall call) {
         int baudRate = call.getInt("baudRate", 9600);
 
-        List<UsbSerialDriver> availableDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager);
+        // Create a custom prober to detect clones and generic chips
+        ProbeTable customTable = new ProbeTable();
+        customTable.addProduct(0x1a86, 0x7523, Ch34xSerialDriver.class); // CH340
+        customTable.addProduct(0x1a86, 0x5523, Ch34xSerialDriver.class); // CH341A
+        customTable.addProduct(0x10c4, 0xea60, Cp21xxSerialDriver.class); // CP210x
+        customTable.addProduct(0x0403, 0x6001, FtdiSerialDriver.class); // FTDI
+        customTable.addProduct(0x067b, 0x2303, ProlificSerialDriver.class); // Prolific
+        
+        UsbSerialProber prober = new UsbSerialProber(customTable);
+        List<UsbSerialDriver> availableDrivers = prober.findAllDrivers(usbManager);
+        
+        // Fallback to default prober if custom one didn't find anything
+        if (availableDrivers.isEmpty()) {
+            availableDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager);
+        }
+
         if (availableDrivers.isEmpty()) {
             call.reject("Tidak ada perangkat USB Serial yang terdeteksi.");
             return;
@@ -186,7 +230,20 @@ public class CustomHardwarePlugin extends Plugin implements SerialInputOutputMan
                     UsbDevice device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
                     if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
                         if (device != null && pendingUsbCall != null) {
-                            List<UsbSerialDriver> availableDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager);
+                            
+                            ProbeTable customTable = new ProbeTable();
+                            customTable.addProduct(0x1a86, 0x7523, Ch34xSerialDriver.class);
+                            customTable.addProduct(0x1a86, 0x5523, Ch34xSerialDriver.class);
+                            customTable.addProduct(0x10c4, 0xea60, Cp21xxSerialDriver.class);
+                            customTable.addProduct(0x0403, 0x6001, FtdiSerialDriver.class);
+                            customTable.addProduct(0x067b, 0x2303, ProlificSerialDriver.class);
+                            
+                            UsbSerialProber prober = new UsbSerialProber(customTable);
+                            List<UsbSerialDriver> availableDrivers = prober.findAllDrivers(usbManager);
+                            if (availableDrivers.isEmpty()) {
+                                availableDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager);
+                            }
+
                             if (!availableDrivers.isEmpty()) {
                                 openUsbPort(pendingUsbCall, availableDrivers.get(0), pendingUsbCall.getInt("baudRate", 9600));
                             }

@@ -10,10 +10,27 @@ function ConnectionPanel({
   connectSerial, connectWS, disconnectWS,
   connectPrinter, disconnectPrinter,
   printerStatus,
-  manualPort, setManualPort
+  manualPort, setManualPort,
+  getPairedDevices
 }) {
   const supportsSerial = 'serial' in navigator || 'usb' in navigator || isCapacitor();
   const isWeb = !isCapacitor() && !isElectron;
+
+  const [pairedDevices, setPairedDevices] = React.useState([]);
+  const [selectedScaleMac, setSelectedScaleMac] = React.useState("");
+  const [selectedPrinterMac, setSelectedPrinterMac] = React.useState("");
+
+  React.useEffect(() => {
+    if (isCapacitor() && getPairedDevices) {
+      getPairedDevices().then(devices => {
+        setPairedDevices(devices);
+        if (devices.length > 0) {
+          if (!selectedScaleMac) setSelectedScaleMac(devices[0].address);
+          if (!selectedPrinterMac) setSelectedPrinterMac(devices[0].address);
+        }
+      });
+    }
+  }, [getPairedDevices]);
 
   return (
     <div className="connection-panel"> 
@@ -109,12 +126,28 @@ function ConnectionPanel({
                   </button>
                 </div>
               ) : (
-                <button 
-                  className="btn-premium btn-primary w-100"
-                  onClick={() => connectSerial(scaleBaudRate, { type: manualPort })}
-                >
-                  <Usb size={18} className="me-2"/> Hubungkan {manualPort === 'usb' ? 'USB' : 'Bluetooth'}
-                </button>
+                <div className="w-100">
+                  {manualPort === 'bluetooth' && (
+                    <div className="form-group mb-2">
+                      <select 
+                        className="premium-input" 
+                        value={selectedScaleMac} 
+                        onChange={(e) => setSelectedScaleMac(e.target.value)}
+                      >
+                        {pairedDevices.map((d, i) => (
+                          <option key={i} value={d.address}>{d.name} ({d.address})</option>
+                        ))}
+                        {pairedDevices.length === 0 && <option value="">Tidak ada perangkat tersimpan</option>}
+                      </select>
+                    </div>
+                  )}
+                  <button 
+                    className="btn-premium btn-primary w-100"
+                    onClick={() => connectSerial(scaleBaudRate, { type: manualPort, macAddress: selectedScaleMac })}
+                  >
+                    <Usb size={18} className="me-2"/> Hubungkan {manualPort === 'usb' ? 'USB' : 'Bluetooth'}
+                  </button>
+                </div>
               )}
             </div>
           ) : (
@@ -170,13 +203,30 @@ function ConnectionPanel({
         </div>
 
         <div className="d-flex gap-2">
-          <button className={`btn-premium btn-primary flex-grow-1 ${isWeb && !('serial' in navigator) ? 'opacity-50' : ''}`}
-                  onClick={connectPrinter}
-                  disabled={printerStatus.includes('Connected')}>
-            <Printer size={18} className="me-2"/> Hubungkan
-          </button>
+          <div className="flex-grow-1">
+            {isCapacitor() && (
+              <div className="form-group mb-2">
+                <select 
+                  className="premium-input" 
+                  value={selectedPrinterMac} 
+                  onChange={(e) => setSelectedPrinterMac(e.target.value)}
+                  style={{ fontSize: '12px' }}
+                >
+                  {pairedDevices.map((d, i) => (
+                    <option key={i} value={d.address}>{d.name} ({d.address})</option>
+                  ))}
+                  {pairedDevices.length === 0 && <option value="">Tidak ada perangkat tersimpan</option>}
+                </select>
+              </div>
+            )}
+            <button className={`btn-premium btn-primary w-100 ${isWeb && !('serial' in navigator) ? 'opacity-50' : ''}`}
+                    onClick={() => connectPrinter({ macAddress: selectedPrinterMac })}
+                    disabled={printerStatus.includes('Connected')}>
+              <Printer size={18} className="me-2"/> Hubungkan
+            </button>
+          </div>
           <button className="btn-premium btn-ghost" 
-                  style={{ width: '60px' }}
+                  style={{ width: '60px', height: isCapacitor() ? 'auto' : '100%' }}
                   onClick={disconnectPrinter}>
             <Power size={18}/>
           </button>

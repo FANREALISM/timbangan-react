@@ -2,6 +2,9 @@ import { useState, useCallback, useRef } from "react";
 import { getPlatform } from "../utils/platform";
 import { EscPosEncoder } from "../utils/escpos-encoder";
 import { TsplEncoder, ZplEncoder } from "../utils/printer-encoders";
+import { registerPlugin } from "@capacitor/core";
+
+const CustomHardware = registerPlugin("CustomHardware");
 
 export const usePrinter = (defaultType = "escpos") => {
   const [printerStatus, setPrinterStatus] = useState("Disconnected");
@@ -13,10 +16,12 @@ export const usePrinter = (defaultType = "escpos") => {
     async (options = {}) => {
       if (platform === "capacitor") {
         try {
-          const { CustomHardware } = Capacitor.Plugins;
           setPrinterStatus("Connecting Bluetooth Printer...");
 
-          await CustomHardware.connectBluetooth({});
+          const params = options.macAddress
+            ? { macAddress: options.macAddress }
+            : {};
+          await CustomHardware.connectBluetooth(params);
           setPrinterStatus("Connected (BT Printer)");
           activePort.current = { type: "bluetooth" };
         } catch (err) {
@@ -48,7 +53,6 @@ export const usePrinter = (defaultType = "escpos") => {
     if (activePort.current) {
       if (platform === "capacitor" && activePort.current.type === "bluetooth") {
         try {
-          const { CustomHardware } = Capacitor.Plugins;
           await CustomHardware.disconnect();
         } catch (e) {}
       } else if (activePort.current.close) {
@@ -99,7 +103,6 @@ export const usePrinter = (defaultType = "escpos") => {
           platform === "capacitor"
         ) {
           try {
-            const { CustomHardware } = Capacitor.Plugins;
             // Encode uint8array bytes to base64 string for the plugin call
             const base64Data = btoa(String.fromCharCode.apply(null, bytes));
             await CustomHardware.write({ data: base64Data });

@@ -51,7 +51,7 @@ function App() {
 
   // Hardware Hooks
   const { printerStatus, connectPrinter, disconnectPrinter, printReceipt, isPrinting } = usePrinter(printerType);
-  const { connectSerial, status: serialStatus, disconnectSerial } = useSerialScale(handleData);
+  const { connectSerial, status: serialStatus, disconnectSerial, getPairedDevices } = useSerialScale(handleData);
   const { connectWS, disconnectWS, status: wsStatus } = useWebsocketScale(handleData);
 
   const isOnline = useMemo(() => 
@@ -166,7 +166,8 @@ function App() {
             scaleBaudRate={baudRate} setScaleBaudRate={setBaudRate}
             printerType={printerType} setPrinterType={setPrinterType}
             manualPort={manualPort} setManualPort={setManualPort}
-            connectSerial={() => connectSerial(Number(baudRate))}
+            connectSerial={(baud, options) => connectSerial(baud || Number(baudRate), options)}
+            getPairedDevices={getPairedDevices}
             connectWS={() => connectWS(deviceIp)}
             disconnectWS={() => { disconnectWS(); disconnectSerial(); }}
             connectPrinter={connectPrinter}

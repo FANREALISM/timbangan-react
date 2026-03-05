@@ -1,7 +1,9 @@
+import { Capacitor } from "@capacitor/core";
+
 export const isElectron = !!(window && window.process && window.process.type);
 
 export const isCapacitor = () => {
-  return !!(window && window.Capacitor && window.Capacitor.isNative);
+  return typeof Capacitor !== "undefined" && Capacitor.isNativePlatform();
 };
 
 export const isPWA = () => {
