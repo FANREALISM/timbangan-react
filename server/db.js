@@ -32,7 +32,7 @@ class Database {
           "..",
           this.config.sqlite_path || "timbangan.db",
         );
-      console.log("🗄️ Using SQLite DB at:", dbPath);
+      console.log(`🗄️ Using SQLite DB at: ${dbPath.replace(/\\/g, "/")}`);
       this.db = new sqlite3.Database(dbPath, (err) => {
         if (err) {
           console.error("SQLite Connection Error:", err.message);
@@ -65,17 +65,18 @@ class Database {
     if (this.type === "mysql") {
       return this.db.query(sql, params, callback);
     } else {
-      // Convert ? to $ for sqlite if needed? No, sqlite3 supports ? too.
-      // But sqlite3 uses .all or .run depending on type
-      const isInsert = sql.toLowerCase().startsWith("insert");
-      if (isInsert) {
-        this.db.run(sql, params, function (err) {
-          if (err) return callback(err);
-          callback(null, { insertId: this.lastID });
-        });
-      } else {
+      const lowerSql = sql.toLowerCase().trim();
+      const isSelect = lowerSql.startsWith("select");
+
+      if (isSelect) {
         this.db.all(sql, params, (err, rows) => {
           callback(err, rows);
+        });
+      } else {
+        // Handle INSERT, UPDATE, DELETE with .run
+        this.db.run(sql, params, function (err) {
+          if (err) return callback(err);
+          callback(null, { insertId: this.lastID, changes: this.changes });
         });
       }
     }

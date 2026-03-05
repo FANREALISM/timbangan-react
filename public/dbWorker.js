@@ -144,6 +144,13 @@ const init = async () => {
           });
           await syncToStorage();
           postMessage({ type: "SUCCESS_INSERT" });
+        } else if (type === "DELETE_LOG") {
+          db.exec({
+            sql: "DELETE FROM timbangan_logs WHERE id = ?",
+            bind: [data.id],
+          });
+          await syncToStorage();
+          postMessage({ type: "SUCCESS_DELETE" });
         } else if (type === "GET_LOGS") {
           const rows = [];
           db.exec({

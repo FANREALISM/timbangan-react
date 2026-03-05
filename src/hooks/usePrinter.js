@@ -10,12 +10,20 @@ export const usePrinter = () => {
 
   // Connect for PWA/Web (Web Serial)
   const connectWebSerial = useCallback(async () => {
-    if (!("serial" in navigator)) {
-      alert("Browser tidak mendukung Web Serial. Gunakan Chrome atau Edge.");
+    let serial = navigator.serial;
+    if (!serial && "usb" in navigator) {
+      const { serial: polyfill } = await import("web-serial-polyfill");
+      serial = polyfill;
+    }
+
+    if (!serial) {
+      alert(
+        "Browser tidak mendukung Web Serial/USB. Gunakan Chrome atau Edge.",
+      );
       return;
     }
     try {
-      const port = await navigator.serial.requestPort();
+      const port = await serial.requestPort();
       await port.open({ baudRate: 9600 });
       activePort.current = port;
       setPrinterStatus("Connected (Web Serial)");
@@ -39,6 +47,39 @@ export const usePrinter = () => {
   const connectPrinter = useCallback(async () => {
     if (platform === "electron") {
       await connectElectron();
+    } else if (platform === "capacitor") {
+      // Connect to Bluetooth Printer for Android
+      if (!window.bluetoothSerial) {
+        alert("Plugin Bluetooth tidak tersedia.");
+        return;
+      }
+      return new Promise((resolve) => {
+        window.bluetoothSerial.list(
+          (devices) => {
+            if (devices.length === 0) {
+              alert("Tidak ada printer Bluetooth ditemukan.");
+              return resolve();
+            }
+            // Assuming the user picks the first paired device for now
+            const device = devices[0];
+            setPrinterStatus(`Connecting to ${device.name}...`);
+            window.bluetoothSerial.connect(
+              device.id,
+              () => {
+                setPrinterStatus(`Connected (BT Printer: ${device.name})`);
+                activePort.current = { type: "bluetooth", id: device.id };
+                resolve();
+              },
+              (err) => {
+                alert("Gagal terhubung printer: " + err);
+                setPrinterStatus("Disconnected");
+                resolve();
+              },
+            );
+          },
+          () => resolve(),
+        );
+      });
     } else {
       await connectWebSerial();
     }
@@ -47,7 +88,11 @@ export const usePrinter = () => {
   const disconnectPrinter = useCallback(async () => {
     if (activePort.current) {
       try {
-        await activePort.current.close();
+        if (activePort.current.type === "bluetooth" && window.bluetoothSerial) {
+          window.bluetoothSerial.disconnect();
+        } else if (activePort.current.close) {
+          await activePort.current.close();
+        }
       } catch (e) {
         console.warn("Error closing port:", e);
       }
@@ -68,7 +113,7 @@ export const usePrinter = () => {
             content: content,
           });
         } else if (activePort.current) {
-          // Web/PWA uses raw ESC/POS over Web Serial
+          // Web/PWA uses raw ESC/POS over Web Serial OR Capacitor uses Bluetooth Serial
           const encoder = new EscPosEncoder();
           const bytes = encoder
             .initialize()
@@ -86,9 +131,20 @@ export const usePrinter = () => {
             .cut()
             .encode();
 
-          const writer = activePort.current.writable.getWriter();
-          await writer.write(bytes);
-          writer.releaseLock();
+          if (
+            activePort.current.type === "bluetooth" &&
+            window.bluetoothSerial
+          ) {
+            // Android Bluetooth
+            await new Promise((resolve, reject) => {
+              window.bluetoothSerial.write(bytes, resolve, reject);
+            });
+          } else if (activePort.current.writable) {
+            // Web Serial
+            const writer = activePort.current.writable.getWriter();
+            await writer.write(bytes);
+            writer.releaseLock();
+          }
         } else {
           alert("Printer tidak terhubung.");
         }
