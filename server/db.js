@@ -25,13 +25,9 @@ class Database {
       });
       console.log("MySQL connection pool initialized");
     } else if (this.type === "sqlite") {
-      const dbPath =
-        process.env.DB_PATH ||
-        path.resolve(
-          __dirname,
-          "..",
-          this.config.sqlite_path || "timbangan.db",
-        );
+      const { getAppPaths } = require("./utils/paths");
+      const paths = getAppPaths();
+      const dbPath = process.env.DB_PATH || paths.sqlite;
       console.log(`🗄️ Using SQLite DB at: ${dbPath.replace(/\\/g, "/")}`);
       this.db = new sqlite3.Database(dbPath, (err) => {
         if (err) {

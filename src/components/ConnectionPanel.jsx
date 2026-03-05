@@ -6,6 +6,7 @@ function ConnectionPanel({
   deviceIp, setDeviceIp,
   printerIp, setPrinterIp,
   scaleBaudRate, setScaleBaudRate,
+  printerType, setPrinterType,
   connectSerial, connectWS, disconnectWS,
   connectPrinter, disconnectPrinter,
   printerStatus,
@@ -67,21 +68,74 @@ function ConnectionPanel({
         </div>
 
         <div className="d-grid gap-2">
-          <div className="d-flex gap-2">
-            <button 
-              className={`btn-premium btn-primary flex-grow-1 ${!supportsSerial ? 'opacity-50' : ''}`} 
-              onClick={connectSerial}
-              disabled={!supportsSerial && !isCapacitor()}
-            >
-              <Usb size={18} className="me-2"/> Serial/USB
-            </button>
-            <button className="btn-premium btn-success flex-grow-1" onClick={() => connectWS(deviceIp)}>
-              <Wifi size={18} className="me-2"/> WiFi
-            </button>
-          </div>
-          <button className="btn-premium btn-danger btn-sm py-2" onClick={disconnectWS} style={{ fontSize: '13px' }}>
-            <Power size={16} className="me-2"/> Putuskan Alat
-          </button>
+          {isCapacitor() ? (
+            <div className="connection-selector mb-2">
+              <label className="small text-muted mb-1">Metode Koneksi</label>
+              <div className="d-flex gap-2">
+                <button 
+                  className={`btn-premium flex-grow-1 ${manualPort === 'usb' ? 'btn-primary' : 'btn-outline-primary'}`}
+                  onClick={() => setManualPort('usb')}
+                  style={{ fontSize: '12px', padding: '8px' }}
+                >
+                  <Usb size={16} className="me-1"/> USB OTG
+                </button>
+                <button 
+                  className={`btn-premium flex-grow-1 ${manualPort === 'bluetooth' ? 'btn-primary' : 'btn-outline-primary'}`}
+                  onClick={() => setManualPort('bluetooth')}
+                  style={{ fontSize: '12px', padding: '8px' }}
+                >
+                  <Wifi size={16} className="me-1"/> Bluetooth
+                </button>
+                <button 
+                  className={`btn-premium flex-grow-1 ${manualPort === 'wifi' ? 'btn-primary' : 'btn-outline-primary'}`}
+                  onClick={() => setManualPort('wifi')}
+                  style={{ fontSize: '12px', padding: '8px' }}
+                >
+                  <Wifi size={16} className="me-1"/> WiFi
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {isCapacitor() ? (
+            <div className="d-flex gap-2">
+              {manualPort === 'wifi' ? (
+                <div className="d-flex gap-2 w-100">
+                  <button className="btn-premium btn-success flex-grow-1" onClick={() => connectWS(deviceIp)}>
+                    <Wifi size={18} className="me-2"/> Hubungkan WiFi
+                  </button>
+                  <button className="btn-premium btn-danger btn-sm py-2" onClick={disconnectWS} style={{ fontSize: '13px' }}>
+                    <Power size={16}/>
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  className="btn-premium btn-primary w-100"
+                  onClick={() => connectSerial(scaleBaudRate, { type: manualPort })}
+                >
+                  <Usb size={18} className="me-2"/> Hubungkan {manualPort === 'usb' ? 'USB' : 'Bluetooth'}
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <button 
+                className={`btn-premium btn-primary ${!supportsSerial ? 'opacity-50' : ''}`} 
+                onClick={() => connectSerial(scaleBaudRate)}
+                disabled={!supportsSerial}
+              >
+                <Usb size={18} className="me-2"/> Serial/USB
+              </button>
+              <div className="d-flex gap-2">
+                <button className="btn-premium btn-success flex-grow-1" onClick={() => connectWS(deviceIp)}>
+                  <Wifi size={18} className="me-2"/> WiFi
+                </button>
+                <button className="btn-premium btn-danger btn-sm py-2" onClick={disconnectWS} style={{ fontSize: '13px' }}>
+                  <Power size={16} className="me-2"/> Off
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -100,6 +154,19 @@ function ConnectionPanel({
             onChange={(e) => setPrinterIp(e.target.value)} 
             placeholder="192.168.1.101" 
           />
+        </div>
+
+        <div className="form-group mb-3">
+          <label>Protokol Printer</label>
+          <select 
+            className="premium-input" 
+            value={printerType} 
+            onChange={(e) => setPrinterType(e.target.value)}
+          >
+            <option value="escpos">ESC/POS (Thermal Receipt)</option>
+            <option value="tspl">TSPL (TSC Label)</option>
+            <option value="zpl">ZPL (Zebra Label)</option>
+          </select>
         </div>
 
         <div className="d-flex gap-2">

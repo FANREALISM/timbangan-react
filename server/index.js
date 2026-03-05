@@ -5,21 +5,22 @@ const ini = require("ini");
 const fs = require("fs");
 const path = require("path");
 
+const { getAppPaths } = require("./utils/paths");
 const app = express();
 
 // IZINKAN AKSES DARI HP/PWA
 app.use(
   cors({
     origin: "*",
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "DELETE"],
   }),
 );
 
 app.use(express.json());
 
 // Load Config
-const configPath = path.resolve(__dirname, "..", "config.ini");
-const configRaw = ini.parse(fs.readFileSync(configPath, "utf-8"));
+const paths = getAppPaths();
+const configRaw = ini.parse(fs.readFileSync(paths.config, "utf-8"));
 const config = configRaw.database;
 const serverConfig = configRaw.server || {};
 const db = new Database(config);

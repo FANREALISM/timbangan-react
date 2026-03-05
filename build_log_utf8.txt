@@ -1,0 +1,106 @@
+﻿
+> Configure project :app
+WARNING: Using flatDir should be avoided because it doesn't support any meta-data formats.
+
+> Configure project :capacitor-cordova-android-plugins
+WARNING: Using flatDir should be avoided because it doesn't support any meta-data formats.
+
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :capacitor-android:preBuild UP-TO-DATE
+> Task :capacitor-android:preDebugBuild UP-TO-DATE
+> Task :capacitor-android:writeDebugAarMetadata UP-TO-DATE
+> Task :capacitor-community-bluetooth-le:preBuild UP-TO-DATE
+> Task :capacitor-community-bluetooth-le:preDebugBuild UP-TO-DATE
+> Task :capacitor-community-bluetooth-le:writeDebugAarMetadata UP-TO-DATE
+> Task :capacitor-community-sqlite:preBuild UP-TO-DATE
+> Task :capacitor-community-sqlite:preDebugBuild UP-TO-DATE
+> Task :capacitor-community-sqlite:writeDebugAarMetadata UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:preBuild UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:preDebugBuild UP-TO-DATE
+> Task :capacitor-cordova-android-plugins:writeDebugAarMetadata UP-TO-DATE
+> Task :app:checkDebugAarMetadata FAILED
+.\gradlew : 
+At line:1 char:13
++ cd android; 
+.\gradlew 
+assembleDebug > 
+..\build_log.txt 2>&1
++             ~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
+    + CategoryInfo     
+         : NotSpecifi  
+  ed: (:String) [],    
+ RemoteException
+    + FullyQualifiedEr 
+   rorId : NativeComm  
+  andError
+ 
+FAILURE: Build failed 
+with an exception.
+
+* What went wrong:
+Execution failed for 
+task ':app:checkDebugAa
+rMetadata'.
+> Could not resolve 
+all files for 
+configuration ':app:deb
+ugRuntimeClasspath'.
+   > Could not find com
+.github.mik3y:usb-seria
+l-for-android:3.4.6.
+     Searched in the 
+following locations:
+       - https://dl.goo
+gle.com/dl/android/mave
+n2/com/github/mik3y/usb
+-serial-for-android/3.4
+.6/usb-serial-for-andro
+id-3.4.6.pom
+       - https://repo.m
+aven.apache.org/maven2/
+com/github/mik3y/usb-se
+rial-for-android/3.4.6/
+usb-serial-for-android-
+3.4.6.pom
+       - file:/H:/timba
+ngan-react/android/capa
+citor-cordova-android-p
+lugins/src/main/libs/us
+b-serial-for-android-3.
+4.6.jar
+       - file:/H:/timba
+ngan-react/android/capa
+citor-cordova-android-p
+lugins/src/main/libs/us
+b-serial-for-android.ja
+r
+       - file:/H:/timba
+ngan-react/android/app/
+libs/usb-serial-for-and
+roid-3.4.6.jar
+       - file:/H:/timba
+ngan-react/android/app/
+libs/usb-serial-for-and
+roid.jar
+     Required by:
+         project :app
+
+* Try:
+> Run with 
+--stacktrace option to 
+get the stack trace.
+> Run with --info or 
+--debug option to get 
+more log output.
+> Run with --scan to 
+get full insights.
+> Get more help at http
+s://help.gradle.org.
+
+BUILD FAILED in 4s
+6 actionable tasks: 1 executed, 5 up-to-date

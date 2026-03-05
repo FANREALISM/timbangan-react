@@ -10,6 +10,9 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
+        // Register Custom Plugins
+        registerPlugin(com.tconnect.app.plugins.CustomHardwarePlugin.class);
+
         // Tambahkan blok kode ini
         WebView webView = this.getBridge().getWebView();
         WebSettings settings = webView.getSettings();

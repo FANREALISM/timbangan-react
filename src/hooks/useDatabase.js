@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
 import { SQLiteConnection, CapacitorSQLite } from "@capacitor-community/sqlite";
+import { getApiUrl } from "../utils/platform";
 
 const DB_NAME = "timbangan_v8";
 
-export function useDatabase() {
+export function useDatabase(serverIp = "192.168.1.100") {
   const [logs, setLogs] = useState([]);
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState(null);
@@ -16,7 +17,7 @@ export function useDatabase() {
 
   // 1. Fetch Config from Server
   useEffect(() => {
-    fetch("/api/config")
+    fetch(getApiUrl("/api/config", serverIp))
       .then((res) => res.json())
       .then((json) => {
         if (json.status === "success") {
@@ -24,7 +25,7 @@ export function useDatabase() {
         }
       })
       .catch((err) => console.error("Config fetch error:", err));
-  }, []);
+  }, [serverIp]);
 
   // 2. Init Native (Android)
   const initNative = async () => {
@@ -59,21 +60,35 @@ export function useDatabase() {
 
   // 3. Init Web (PWA)
   const initWeb = () => {
-    const worker = new Worker("/dbWorker.js", { type: "module" });
-    worker.onmessage = (e) => {
-      const { type, data } = e.data;
-      if (type === "DB_READY") {
-        setMethod(data.method || "WEB_WASM");
-        setIsReady(true);
-        worker.postMessage({ type: "GET_LOGS" });
-      } else if (type === "LOGS_DATA") {
-        setLogs(data || []);
-      }
-    };
-    workerRef.current = worker;
+    // We use a simple string for the Worker to prevent Vite from trying to
+    // bundle the worker asset internally, which causes PWA plugin errors in this setup.
+    // In Capacitor context, we don't use this Web Worker for DB anyway (we use Native),
+    // but we ensure it doesn't break the build.
+    try {
+      const workerUrl = `${window.location.origin}/dbWorker.js`;
+      const worker = new Worker(workerUrl, {
+        type: "module",
+      });
+      worker.onmessage = (e) => {
+        const { type, data } = e.data;
+        if (type === "DB_READY") {
+          setMethod(data.method || "WEB_WASM");
+          setIsReady(true);
+          worker.postMessage({ type: "GET_LOGS" });
+        } else if (type === "LOGS_DATA") {
+          setLogs(data || []);
+        }
+      };
+      workerRef.current = worker;
+    } catch (err) {
+      console.error("Worker Init Error:", err);
+      setError("Gagal inisialisasi database (Worker)");
+    }
   };
 
   useEffect(() => {
+    // Di Capacitor, jika saveMode adalah 'server', kita tidak perlu init local DB
+    // kecuali jika kita ingin hybrid. Namun initNative sekarang dipanggil di sini.
     if (Capacitor.isNativePlatform()) {
       initNative();
     } else {
@@ -81,7 +96,11 @@ export function useDatabase() {
     }
     return () => {
       if (workerRef.current) workerRef.current.terminate();
-      if (dbRef.current) dbRef.current.close();
+      if (dbRef.current) {
+        try {
+          dbRef.current.close();
+        } catch (e) {}
+      }
     };
   }, []);
 
@@ -89,7 +108,7 @@ export function useDatabase() {
     // If server only, fetch from API
     if (saveMode === "server") {
       try {
-        const res = await fetch("/api/logs");
+        const res = await fetch(getApiUrl("/api/logs", serverIp));
         const json = await res.json();
         if (json.status === "success") setLogs(json.data);
       } catch (err) {
@@ -107,14 +126,14 @@ export function useDatabase() {
     } else if (workerRef.current) {
       workerRef.current.postMessage({ type: "GET_LOGS" });
     }
-  }, [saveMode]);
+  }, [saveMode, serverIp]);
 
   const saveLog = useCallback(
     async (data) => {
       // 1. Save to Server
       if (saveMode === "server" || saveMode === "hybrid") {
         try {
-          await fetch("/api/weight", {
+          await fetch(getApiUrl("/api/weight", serverIp), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(data),
@@ -139,7 +158,7 @@ export function useDatabase() {
       // Refresh after a slight delay
       setTimeout(refreshLogs, 200);
     },
-    [saveMode, refreshLogs],
+    [saveMode, refreshLogs, serverIp],
   );
 
   const deleteLog = useCallback(
@@ -147,7 +166,9 @@ export function useDatabase() {
       // 1. Delete from Server
       if (saveMode === "server" || saveMode === "hybrid") {
         try {
-          await fetch(`/api/logs/${id}`, { method: "DELETE" });
+          await fetch(getApiUrl(`/api/logs/${id}`, serverIp), {
+            method: "DELETE",
+          });
         } catch (err) {
           console.error("API Delete Error:", err);
         }
@@ -166,7 +187,7 @@ export function useDatabase() {
 
       setTimeout(refreshLogs, 200);
     },
-    [saveMode, refreshLogs],
+    [saveMode, refreshLogs, serverIp],
   );
 
   useEffect(() => {

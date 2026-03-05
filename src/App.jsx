@@ -28,17 +28,29 @@ function App() {
   const { weight, unit, handleData } = useScaleData();
   const [productName, setProductName] = useState("");
   const [clientName, setClientName] = useState("");
-  const [deviceIp, setDeviceIp] = useState("192.168.1.100");
-  const [printerIp, setPrinterIp] = useState("192.168.1.101");
-  const [baudRate, setBaudRate] = useState(9600);
+  
+  // Persistence for settings
+  const [deviceIp, setDeviceIp] = useState(() => localStorage.getItem("deviceIp") || "192.168.1.100");
+  const [printerIp, setPrinterIp] = useState(() => localStorage.getItem("printerIp") || "192.168.1.101");
+  const [baudRate, setBaudRate] = useState(() => localStorage.getItem("baudRate") || "9600");
+  const [printerType, setPrinterType] = useState(() => localStorage.getItem("printerType") || "escpos");
+  
   const [manualPort, setManualPort] = useState("");
   const [showSettings, setShowSettings] = useState(false);
 
+  // Sync settings to localStorage
+  React.useEffect(() => {
+    localStorage.setItem("deviceIp", deviceIp);
+    localStorage.setItem("printerIp", printerIp);
+    localStorage.setItem("baudRate", baudRate);
+    localStorage.setItem("printerType", printerType);
+  }, [deviceIp, printerIp, baudRate, printerType]);
+
   // Database Hook with SaveMode
-  const { logs, isReady: dbReady, method: dbMethod, saveLog, deleteLog, saveMode } = useDatabase();
+  const { logs, isReady: dbReady, method: dbMethod, saveLog, deleteLog, saveMode } = useDatabase(deviceIp);
 
   // Hardware Hooks
-  const { printerStatus, connectPrinter, disconnectPrinter, printReceipt, isPrinting } = usePrinter();
+  const { printerStatus, connectPrinter, disconnectPrinter, printReceipt, isPrinting } = usePrinter(printerType);
   const { connectSerial, status: serialStatus, disconnectSerial } = useSerialScale(handleData);
   const { connectWS, disconnectWS, status: wsStatus } = useWebsocketScale(handleData);
 
@@ -152,6 +164,7 @@ function App() {
             deviceIp={deviceIp} setDeviceIp={setDeviceIp}
             printerIp={printerIp} setPrinterIp={setPrinterIp}
             scaleBaudRate={baudRate} setScaleBaudRate={setBaudRate}
+            printerType={printerType} setPrinterType={setPrinterType}
             manualPort={manualPort} setManualPort={setManualPort}
             connectSerial={() => connectSerial(Number(baudRate))}
             connectWS={() => connectWS(deviceIp)}
